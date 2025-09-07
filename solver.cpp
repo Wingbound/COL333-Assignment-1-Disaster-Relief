@@ -1,9 +1,10 @@
 #include "solver.h"
-#include <iostream>
+#include <bits/stdc++.h>
 #include <chrono>
 #include <unordered_map>
 #include <queue>
 #include <unordered_set>
+#include <random>
 
 using namespace std;
 // You can add any helper functions or classes you need here.
@@ -56,6 +57,15 @@ priority_queue<pair<VillageAlt*, double>, vector<pair<VillageAlt*, double>>, PQB
     return pq;
 }
 
+string vecToString(vector<HelicopterAlt>& helicopters_permutations) {
+    string s;
+    for (HelicopterAlt h : helicopters_permutations) {
+        s += to_string(h.helicopter.id);
+    }
+    return s;
+}
+
+
 /**
  * @brief The main function to implement your search/optimization algorithm.
  * * This is a placeholder implementation. It creates a simple, likely invalid,
@@ -70,158 +80,216 @@ Solution solve(const ProblemData& problem) {
 
     Solution solution;
 
-    unordered_map<int, HelicopterPlan> solution_map;
+    // sort(helicopters_alt.begin(), helicopters_alt.end(), [](const HelicopterAlt& a, const HelicopterAlt& b) {
+    //     return a.helicopter.distance_capacity > b.helicopter.distance_capacity;
+    // });
+
+    double best_score = 0.0;
+
+    unordered_map<int, HelicopterPlan> best_solution_map;
 
     for(Helicopter h : problem.helicopters){
-        HelicopterPlan hp = {h.id, vector<Trip>()};
-        solution_map[h.id] = hp;
-    }
+            HelicopterPlan hp = {h.id, vector<Trip>()};
+            best_solution_map[h.id] = hp;
+        }
 
-    vector<VillageAlt> villages_alt;
+    unordered_map<string, vector<HelicopterAlt>> seen;
 
-    for(Village v : problem.villages){
-        VillageAlt va = {v, 0, 0, 0, false};
-        villages_alt.push_back(va);
-    }
+    int repeat_count = 0;
 
-    vector<HelicopterAlt> helicopters_alt;
+    while(time_check(start, problem.time_limit_minutes) && repeat_count < 100){
+        cout << "Time remaining: " << problem.time_limit_minutes - chrono::duration_cast<chrono::minutes>(chrono::high_resolution_clock::now() - start).count() << " minutes" << endl;
 
-    for(Helicopter h : problem.helicopters){
-        HelicopterAlt ha = {h, 0.0, 0.0};
-        helicopters_alt.push_back(ha);
-    }
+        vector<VillageAlt> villages_alt;
 
-    while(!satisfaction(villages_alt) && time_check(start, problem.time_limit_minutes)){
-        int empty_drops_count = 0;
-        int empty_trip_count = 0;
-        for(HelicopterAlt& h : helicopters_alt){
-            vector<Drop> drops;
-            int dry_food_pickup = 0;
-            int perishable_food_pickup = 0;
-            int other_supplies_pickup = 0;
+        for(Village v : problem.villages){
+            VillageAlt va = {v, 0, 0, 0, false};
+            villages_alt.push_back(va);
+        }
 
-            double curr_weight = 0;
+        vector<HelicopterAlt> helicopters_alt;
 
-            Point curr = problem.cities[h.helicopter.home_city_id - 1];
+        for(Helicopter h : problem.helicopters){
+            HelicopterAlt ha = {h, 0.0, 0.0};
+            helicopters_alt.push_back(ha);
+        }
 
-            // vector<VillageAlt> visited_villages;
-            unordered_set<int> visited_villages_ids;
+        //random shuffle
+        random_device rd;
+        mt19937 g(rd());
+        shuffle(helicopters_alt.begin(), helicopters_alt.end(), g);
 
-            int village_check_count = 0;
+        // unsigned seed = chrono::system_clock::now().time_since_epoch().count();
+        // shuffle(helicopters_alt.begin(), helicopters_alt.end(), default_random_engine(seed));
 
-            while(h.cumulative_distance_travelled < problem.d_max && h.trip_distance < h.helicopter.distance_capacity && village_check_count < villages_alt.size()){
-                priority_queue<pair<VillageAlt*, double>, vector<pair<VillageAlt*, double>>, PQByDist> pq = unvisited_villages_queue(villages_alt, curr, visited_villages_ids);
+        string key = vecToString(helicopters_alt);
 
-                while(!pq.empty()){
-                    VillageAlt& v = *pq.top().first;
-                    pq.pop();
+        if (seen.find(key) == seen.end()) {
+            // Store only new permutations
+            seen[key] = helicopters_alt;
+            repeat_count = 0;
+        }
+        else{
+            repeat_count++;
+            continue;
+        }
 
-                    village_check_count++;
 
-                    if(v.is_fulfilled) continue;
-                    if(distance(curr, v.village.coords) + distance(v.village.coords, problem.cities[h.helicopter.home_city_id - 1]) + h.trip_distance > h.helicopter.distance_capacity) continue;
-                    if(distance(curr, v.village.coords) + distance(v.village.coords, problem.cities[h.helicopter.home_city_id - 1]) + h.cumulative_distance_travelled > problem.d_max) continue;
+        unordered_map<int, HelicopterPlan> solution_map;
 
-                    //alternate food allocation
-                    int total_food_required = v.village.population*9;
-                    int other_required = v.village.population - v.other_supplies_recieved;
-                    double perishable_food_ratio = (problem.packages[0].value)/(problem.packages[1].value + problem.packages[0].value)* total_food_required;
-                    int perishable_food_required = perishable_food_ratio  - v.perishable_food_recieved;
-                    int dry_food_required = total_food_required - perishable_food_required - v.dry_food_recieved;
-                    // cout << perishable_food_required << " " << dry_food_required << endl;
+        for(Helicopter h : problem.helicopters){
+            HelicopterPlan hp = {h.id, vector<Trip>()};
+            solution_map[h.id] = hp;
+        }
 
-                    double remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+        double score = 0.0;
 
-                    // cout << "Remaining capacity before allocation: " << remaining_capacity << endl;
+        while(!satisfaction(villages_alt) && time_check(start, problem.time_limit_minutes)){
+            int empty_drops_count = 0;
+            int empty_trip_count = 0;
 
-                    //first perishable food
-                    int perishable_food_add = min(perishable_food_required, (int) (remaining_capacity/ problem.packages[1].weight));
-                    perishable_food_pickup += perishable_food_add;
-                    curr_weight += perishable_food_add * problem.packages[1].weight;
-                    total_food_required -= perishable_food_add;
-                    remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+            double cumulative_trip_cost = 0.0;
+            double cumulative_value_achieved = 0.0;
+            
+            for(HelicopterAlt& h : helicopters_alt){
+                vector<Drop> drops;
+                int dry_food_pickup = 0;
+                int perishable_food_pickup = 0;
+                int other_supplies_pickup = 0;
 
-                    //second dry food
-                    int dry_food_add = min(dry_food_required, (int) (remaining_capacity/ problem.packages[0].weight));
-                    dry_food_pickup += dry_food_add;
-                    curr_weight += dry_food_add * problem.packages[0].weight;
-                    total_food_required -= dry_food_add;
-                    remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+                double curr_weight = 0;
 
-                    //third other supplies
-                    int other_supplies_add = min(other_required, (int) (remaining_capacity/ problem.packages[2].weight));
-                    other_supplies_pickup += other_supplies_add;
-                    curr_weight += other_supplies_add * problem.packages[2].weight;
-                    other_required -= other_supplies_add;
-                    remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+                Point curr = problem.cities[h.helicopter.home_city_id - 1];
 
-                    // cout << "Remaining capacity after allocation: " << remaining_capacity << endl;
+                // vector<VillageAlt> visited_villages;
+                unordered_set<int> visited_villages_ids;
 
-                    v.dry_food_recieved += dry_food_add;
-                    v.perishable_food_recieved += perishable_food_add;
-                    v.other_supplies_recieved += other_supplies_add;
+                int village_check_count = 0;
 
-                    if(dry_food_add + perishable_food_add + other_supplies_add > 0){
-                        h.cumulative_distance_travelled += distance(curr, v.village.coords);
-                        h.trip_distance += distance(curr, v.village.coords);
-        
-                        curr = v.village.coords;
-                        visited_villages_ids.insert(v.village.id);
+                double trip_cost = 0.0;
+                double value_achieved = 0.0;
 
-                        Drop drop = {v.village.id, dry_food_add, perishable_food_add, other_supplies_add};
-                        drops.push_back(drop);
+                double prev_cumulative_distance = h.cumulative_distance_travelled;
+
+                while(h.cumulative_distance_travelled < problem.d_max && h.trip_distance < h.helicopter.distance_capacity && village_check_count < villages_alt.size()){
+                    priority_queue<pair<VillageAlt*, double>, vector<pair<VillageAlt*, double>>, PQByDist> pq = unvisited_villages_queue(villages_alt, curr, visited_villages_ids);
+                    if(pq.empty()) break;
+                    while(!pq.empty()){
+                        VillageAlt& v = *pq.top().first;
+                        pq.pop();
+
+                        village_check_count++;
+
+                        if(v.is_fulfilled) continue;
+                        if(distance(curr, v.village.coords) + distance(v.village.coords, problem.cities[h.helicopter.home_city_id - 1]) + h.trip_distance > h.helicopter.distance_capacity) continue;
+                        if(distance(curr, v.village.coords) + distance(v.village.coords, problem.cities[h.helicopter.home_city_id - 1]) + h.cumulative_distance_travelled > problem.d_max) continue;
+
+                        //check for requirements of village
+                        int food_required = v.village.population*9 - (v.dry_food_recieved + v.perishable_food_recieved);
+                        int other_required = v.village.population - v.other_supplies_recieved;
+                        double remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+
+                        //greedy wrt type of food
+                        //first perishable food
+                        int perishable_food_add = min(food_required, (int) (remaining_capacity / problem.packages[1].weight));
+                        perishable_food_pickup += perishable_food_add;
+                        curr_weight += perishable_food_add * problem.packages[1].weight;
+                        food_required -= perishable_food_add;
+                        remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+
+                        //second dry food
+                        int dry_food_add = min(food_required, (int) (remaining_capacity/ problem.packages[0].weight));
+                        dry_food_pickup += dry_food_add;
+                        curr_weight += dry_food_add * problem.packages[0].weight;
+                        food_required -= dry_food_add;
+                        remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+
+                        //third other supplies
+                        int other_supplies_add = min(other_required, (int) (remaining_capacity / problem.packages[2].weight));
+                        other_supplies_pickup += other_supplies_add;
+                        curr_weight += other_supplies_add * problem.packages[2].weight;
+                        other_required -= other_supplies_add;
+                        remaining_capacity = h.helicopter.weight_capacity - curr_weight;
+
+                        v.dry_food_recieved += dry_food_add;
+                        v.perishable_food_recieved += perishable_food_add;
+                        v.other_supplies_recieved += other_supplies_add;
+
+                        if(dry_food_add + perishable_food_add + other_supplies_add > 0){
+                            h.cumulative_distance_travelled += distance(curr, v.village.coords);
+                            h.trip_distance += distance(curr, v.village.coords);
+            
+                            curr = v.village.coords;
+                            visited_villages_ids.insert(v.village.id);
+
+                            Drop drop = {v.village.id, dry_food_add, perishable_food_add, other_supplies_add};
+                            drops.push_back(drop);
+                        }
+
+                        bool food_ok = (v.dry_food_recieved + v.perishable_food_recieved) >= 9 * v.village.population;
+                        bool other_ok = v.other_supplies_recieved >= v.village.population;
+                        if(food_ok && other_ok) v.is_fulfilled = true;
+
                     }
-
-                    // if((9*v.village.population - v.dry_food_recieved -v.perishable_food_recieved) == 0 && other_required == 0){
-                    //     v.is_fulfilled = true;
-                    // }
-
-                    bool food_ok = (v.dry_food_recieved + v.perishable_food_recieved) >= 9 * v.village.population;
-                    bool other_ok = v.other_supplies_recieved >= v.village.population;
-                    if(food_ok && other_ok) v.is_fulfilled = true;
-
                 }
+
+                if(dry_food_pickup + perishable_food_pickup + other_supplies_pickup == 0){
+                    empty_trip_count++;
+                    continue;
+                }
+
+                h.cumulative_distance_travelled += distance(curr, problem.cities[h.helicopter.home_city_id - 1]);
+                h.trip_distance = 0;
+
+                trip_cost += h.helicopter.fixed_cost + h.helicopter.alpha * (h.cumulative_distance_travelled - prev_cumulative_distance);
+                value_achieved += dry_food_pickup * problem.packages[0].value + perishable_food_pickup * problem.packages[1].value + other_supplies_pickup * problem.packages[2].value;
+
+                if(drops.size() == 0){
+                    empty_drops_count ++;
+                }
+                else{
+                    Trip trip = {dry_food_pickup, perishable_food_pickup, other_supplies_pickup, drops};
+                    solution_map[h.helicopter.id].trips.push_back(trip);
+
+                    cout << "Heli" << h.helicopter.id << " " << dry_food_pickup << " " << perishable_food_pickup << " " << other_supplies_pickup << " " << h.cumulative_distance_travelled << endl;
+                }
+
+                cumulative_trip_cost += trip_cost;
+                cumulative_value_achieved += value_achieved;
             }
 
-            if(dry_food_pickup + perishable_food_pickup + other_supplies_pickup == 0){
-                empty_trip_count++;
-                continue;
+            score += cumulative_value_achieved - cumulative_trip_cost;
+
+            //printing output
+            cout << "Village details" << endl;
+            for(VillageAlt v : villages_alt){
+                cout << v.village.id << " " << v.dry_food_recieved << " " << v.perishable_food_recieved << " " << v.other_supplies_recieved << endl;
+            }
+            //printing end
+
+            if(empty_drops_count == helicopters_alt.size()){
+                //no more drops can be made
+                break;
             }
 
-            h.cumulative_distance_travelled += distance(curr, problem.cities[h.helicopter.home_city_id - 1]);
-            h.trip_distance = 0;
-
-            if(drops.size() == 0){
-                empty_drops_count ++;
-            }
-            else{
-                Trip trip = {dry_food_pickup, perishable_food_pickup, other_supplies_pickup, drops};
-                solution_map[h.helicopter.id].trips.push_back(trip);
-
-                cout << "Heli" << h.helicopter.id << " " << dry_food_pickup << " " << perishable_food_pickup << " " << other_supplies_pickup << " " << h.cumulative_distance_travelled << endl;
+            if(empty_trip_count == helicopters_alt.size()){
+                //no more trips can be made
+                break;
             }
         }
 
-        cout << "Village details" << endl;
+        if(score > best_score){
+            best_score = score;
+            best_solution_map = solution_map;
 
-        for(VillageAlt v : villages_alt){
-            cout << v.village.id << " " << v.dry_food_recieved << " " << v.perishable_food_recieved << " " << v.other_supplies_recieved << endl;
-        }
-
-        if(empty_drops_count == helicopters_alt.size()){
-            //no more drops can be made
-            break;
-        }
-
-        if(empty_trip_count == helicopters_alt.size()){
-            //no more trips can be made
-            break;
+            cout << "New best score: " << best_score << endl;
         }
     }
 
     for(Helicopter h : problem.helicopters){
-        solution.push_back(solution_map[h.id]);
+        solution.push_back(best_solution_map[h.id]);
     }
+    cout << "Final score: " << best_score << endl;
 
     cout << "Solver finished." << endl;
     return solution;
