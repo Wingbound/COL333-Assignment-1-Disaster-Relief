@@ -1,0 +1,6 @@
+Even though we have taken help from the following students and LLMs in terms of discussing ideas and coding practices, all our code is written by us.
+
+Student names: Anirudha Saraf, Nischay Patil, Tanish Kumar
+LLMs used: ChatGPT, Deepseek, GitHub Copilot, Claude
+
+Info about code: Food loading in helicopter is greedy, based on perishable food given highest priority. The helicopter path search is based on nearest neighbor.
