@@ -41,7 +41,7 @@ bool satisfaction(vector<VillageAlt>& villages_alt){
 bool time_check(chrono::high_resolution_clock::time_point start, int time_limit_minutes) {
     auto now = chrono::high_resolution_clock::now();
     chrono::duration<double, std::milli> elapsed = now - start;
-    return elapsed.count() < time_limit_minutes * 60 * 1000 - 10*1000;
+    return elapsed.count() < time_limit_minutes * 60 * 1000 - 7*1000;
 }
 
 priority_queue<pair<VillageAlt*, double>, vector<pair<VillageAlt*, double>>, PQByDist> unvisited_villages_queue(vector<VillageAlt>& villages_alt, Point curr, unordered_set<int>& visited_villages_ids){
@@ -98,7 +98,7 @@ Solution solve(const ProblemData& problem) {
     int repeat_count = 0;
 
     while(time_check(start, problem.time_limit_minutes) && repeat_count < 100){
-        cout << "Time remaining: " << problem.time_limit_minutes - chrono::duration_cast<chrono::minutes>(chrono::high_resolution_clock::now() - start).count() << " minutes" << endl;
+        // cout << "Time remaining: " << problem.time_limit_minutes - chrono::duration_cast<chrono::minutes>(chrono::high_resolution_clock::now() - start).count() << " minutes" << endl;
 
         vector<VillageAlt> villages_alt;
 
